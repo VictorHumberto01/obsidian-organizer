@@ -70,6 +70,61 @@ Notes on vault layout and behavior:
 - When the model suggests a category that does not yet exist, the tool creates a new `.md` file for it under `Categories/`, unless `-fast` is set, in which case the note is left untouched.
 - Every decision (kept as `Quick Notes` or promoted to a category) is appended to `organizer.log` in the vault root, in addition to being printed to the console.
 
+## Writing Effective Rules (organizer_rules.md)
+
+`organizer_rules.md`, if present at the root of `-dir`, is not summarized or interpreted by the tool: its raw contents are appended, verbatim, to the classification prompt that is sent to the model for every single note. Understanding exactly how it fits into that prompt is the key to writing rules that work.
+
+The full prompt sent to the model is assembled in this order:
+
+```
+Você é um classificador de arquivos inflexível e cirúrgico. Escolha a melhor categoria da
+lista abaixo baseando-se no TÍTULO e no CONTEÚDO da nota.
+
+[ CATEGORIAS VÁLIDAS ]: <categories found in Categories/, comma-separated>
+
+REGRAS GERAIS:
+1. Não seja preguiçoso. EVITE usar "Quick Notes" a menos que a nota seja literalmente
+   lixo, um rascunho sem sentido ou uma lista de compras banal.
+2. NUNCA invente categorias ou traduza os nomes. A saída deve ser EXATAMENTE uma das
+   palavras dentro da lista de Categorias Válidas.
+3. Responda APENAS o nome escolhido. Sem explicações, sem aspas, sem pontos finais.
+
+REGRAS ESPECÍFICAS DESTE COFRE:
+<contents of organizer_rules.md, inserted as-is>
+
+Texto: '<note title and body>'
+```
+
+Everything below `REGRAS ESPECÍFICAS DESTE COFRE:` is entirely up to you. In practice, that means `organizer_rules.md` is your opportunity to encode the vault-specific judgment calls that a generic classifier cannot know on its own: which category wins when a note touches two topics, which keywords should always map to a given category, and which edge cases deserve special handling.
+
+Guidelines for writing rules that actually change model behavior:
+
+- Write one instruction per line, as short, direct, imperative statements. Small local models (like `phi3:mini`) follow a flat list of concrete rules far more reliably than a few dense paragraphs of prose.
+- Reference categories using their exact name as it appears in `Categories/` (the `.md` filename without the extension), with matching capitalization. The model must output that exact string, and any mismatch will be treated as a brand-new category suggestion instead of a match.
+- Prefer concrete triggers over abstract intent. Instead of "classify personal finance notes correctly", write something like "Notes that mention expenses, invoices, budgets or investments must be Finance, even if short."
+- Resolve foreseeable ambiguity explicitly instead of leaving it to chance. If two categories could both plausibly apply, state which one takes priority: "If a note mentions both a recipe and a social event, prefer Cooking over Social."
+- Call out exceptions to the general rules explicitly, especially exceptions to rule 1 above (the bias against `Quick Notes`). For example: "Even one-line notes about medication or symptoms must be Health, never Quick Notes."
+- Do not ask the model to explain its reasoning, add punctuation, use markdown, or wrap the answer in quotes. That directly conflicts with general rule 3 ("answer only the chosen name") and will break the tool's parsing, since the raw response is used as the category name almost as-is (see `sanitizeCategory` in `main.go`).
+- Do not tell the model to invent or rename categories; that conflicts with general rule 2 and with how the tool decides whether a category already exists.
+- Keep the language of your rules consistent with the language of your notes and category names. The base persona above is in Portuguese; if your vault and categories are in another language, mirror that language in `organizer_rules.md` so keyword-style rules actually match what appears in your notes.
+- Keep the file short and specific. It is resent in full on every classification call, so a bloated rules file adds latency (particularly noticeable with `-mode=ollama` on small models) and can dilute a small model's attention, making it less likely to follow any single rule.
+- Treat the file as living documentation: after a run, check the console output and `organizer.log` for notes that were mis-classified or unexpectedly kept as `Quick Notes`, then add or adjust a rule to cover that specific case.
+
+Example `organizer_rules.md`, assuming a vault with `Health.md`, `Finance.md`, `Cooking.md` and `Work.md` under `Categories/`:
+
+```
+1. Notas que mencionem consultas médicas, exames, sintomas ou medicamentos devem ser
+   Health, mesmo que curtas.
+2. Notas sobre gastos, faturas, orçamento ou investimentos devem ser Finance.
+3. Notas sobre receitas, ingredientes ou técnicas de cozinha devem ser Cooking, mesmo
+   que também mencionem um evento social.
+4. Anotações de reuniões de trabalho devem ser Work, mesmo que tenham poucas linhas.
+5. Em caso de empate entre Health e Work (ex: consulta médica marcada durante o
+   expediente), prefira Health.
+```
+
+When iterating on rules, `-mode=ollama` is the faster feedback loop: it runs locally, has no macOS-specific dependency, and lets you swap `-ollama-model` freely (for example between `phi3:mini` and a larger model such as `qwen2.5:7b` or `llama3.1:8b`) to see how much rule adherence varies by model size before settling on a final configuration for everyday use.
+
 ## Building
 
 Fetch dependencies (if any are added in the future) and build a binary:
