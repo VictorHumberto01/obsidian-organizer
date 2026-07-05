@@ -22,9 +22,11 @@ REGRAS GERAIS:
 3. Responda APENAS o nome escolhido. Sem explicações, sem aspas, sem pontos finais.`
 
 func main() {
-	mode := flag.String("mode", "mock", "Estratégia de IA: mac, xeon ou mock")
+	mode := flag.String("mode", "mock", "Estratégia de IA: mac, ollama ou mock")
 	dirFlag := flag.String("dir", ".", "Diretório raiz do Obsidian")
 	fastFlag := flag.Bool("fast", false, "Ativa modo rápido (pula interação e mantém como Quick Note)")
+	ollamaURLFlag := flag.String("ollama-url", "http://localhost:11434/api/generate", "URL do servidor Ollama (modo -mode=ollama)")
+	ollamaModelFlag := flag.String("ollama-model", "phi3:mini", "Modelo a ser usado pelo Ollama (modo -mode=ollama)")
 	flag.Parse()
 
 	rootDir := *dirFlag
@@ -49,15 +51,15 @@ func main() {
 	case "mac":
 		fmt.Printf("🤖 Inicializando IA Local via Apfel (macOS) | Fast Mode: %t\n", *fastFlag)
 		ai = &llm.ApfelProvider{Persona: personaDinamica}
-	case "xeon":
-		fmt.Printf("🖥️ Inicializando IA remota via Fedora Server | Fast Mode: %t\n", *fastFlag)
+	case "ollama":
+		fmt.Printf("🖥️ Inicializando IA via Ollama (%s, modelo %s) | Fast Mode: %t\n", *ollamaURLFlag, *ollamaModelFlag, *fastFlag)
 		ai = &llm.OllamaProvider{
 			Persona: personaDinamica,
-			URL:     "http://tubetoserver.local:11434/api/generate",
-			Model:   "phi3:mini",
+			URL:     *ollamaURLFlag,
+			Model:   *ollamaModelFlag,
 		}
 	default:
-		log.Fatalf("Modo inválido. Use -mode=mac, -mode=xeon ou -mode=mock")
+		log.Fatalf("Modo inválido. Use -mode=mac, -mode=ollama ou -mode=mock")
 	}
 
 	leitorTeclado := bufio.NewReader(os.Stdin)
